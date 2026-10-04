@@ -1,4 +1,5 @@
 import asyncio
+import shutil
 from sqlalchemy.orm import Session
 from models import Cliente, Log
 
@@ -10,9 +11,13 @@ async def executar_sync(cliente_id: str, db: Session):
         return False, f"Cliente com ID {cliente_id} não encontrado."
 
     # Prepara o comando do Rclone
+    rclone_path = shutil.which("rclone")
+    if not rclone_path:
+        return False, "Executável do Rclone não encontrado no PATH do sistema."
+
     # Utilizamos aspas duplas no subprocesso caso haja espaços no caminho
     cmd = [
-        "rclone",
+        rclone_path,
         "sync",
         cliente.pasta_origem,
         cliente.pasta_destino,
@@ -59,7 +64,7 @@ async def executar_sync(cliente_id: str, db: Session):
         return status_sucesso, mensagem
 
     except Exception as e:
-        mensagem_erro = f"Erro inesperado ao executar o subprocesso Rclone: {str(e)}"
+        mensagem_erro = f"Erro inesperado ao executar o subprocesso Rclone: {repr(e)}"
         
         # Registra a falha no banco de dados
         novo_log = Log(
