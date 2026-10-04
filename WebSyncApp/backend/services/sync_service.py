@@ -36,9 +36,10 @@ async def executar_sync(cliente_id: str, db: Session):
     ]
 
     try:
-        # Invoca o Rclone de forma não bloqueante
+        # Invoca o Rclone de forma não bloqueante (stdin=DEVNULL previne travamento em caso de prompt)
         process = await asyncio.create_subprocess_exec(
             *cmd,
+            stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )

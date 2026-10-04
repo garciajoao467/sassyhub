@@ -98,13 +98,17 @@ def listar_logs_cliente(id: str, db: Session = Depends(get_db)):
     return logs
 
 @router.post("/{id}/sync-manual")
-def sync_manual_cliente(id: str, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    """Aciona uma execução imediata de sincronização em background."""
+async def sync_manual_cliente(id: str, db: Session = Depends(get_db)):
+    """Aciona uma execução imediata de sincronização (bloqueante)."""
     cliente = db.query(Cliente).filter(Cliente.id == id).first()
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente não encontrado")
         
-    # Adiciona a tarefa à fila de background para não bloquear a resposta HTTP
-    background_tasks.add_task(bg_sync_task, id)
+    # Executa de forma bloqueante (aguarda o fim do processo)
+    sucesso, mensagem = await executar_sync(id, db)
     
-    return {"mensagem": "Sincronização manual iniciada em background"}
+    # Retorna o resultado e os logs (STDOUT/STDERR) gerados pelo Rclone
+    return {
+        "sucesso": sucesso,
+        "mensagem": mensagem
+    }
