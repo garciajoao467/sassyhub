@@ -5,7 +5,7 @@ from database import engine, Base
 import models
 from scheduler import scheduler
 from routers import clientes
-
+from fastapi.middleware.cors import CORSMiddleware
 # Cria as tabelas do banco de dados (se não existirem)
 Base.metadata.create_all(bind=engine)
 
@@ -21,6 +21,13 @@ app = FastAPI(
     title="WebSync API",
     description="API para gerenciamento de motor de sincronização Rclone",
     lifespan=lifespan
+)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], # Em produção, substitua pelo domínio do frontend
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Registrar os roteadores (routers)
