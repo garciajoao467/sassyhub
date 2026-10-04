@@ -2,8 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 from typing import List
 from database import get_db, SessionLocal
-from models import Cliente, Log
 import schemas
+from models import Cliente, Log
+from scheduler import rotina_diaria_sync
 from services.sync_service import executar_sync
 
 router = APIRouter(prefix="/api/clientes", tags=["Clientes"])
@@ -36,6 +37,13 @@ def criar_cliente(cliente: schemas.ClienteCreate, db: Session = Depends(get_db))
     db.commit()
     db.refresh(novo_cliente)
     return novo_cliente
+
+@router.post("/sync-global")
+def sync_global_clientes(background_tasks: BackgroundTasks):
+    """Aciona manualmente a rotina global de sincronização (todos os clientes ativos) em background."""
+    background_tasks.add_task(rotina_diaria_sync)
+    return {"mensagem": "Sincronização global (sequencial) iniciada em background."}
+
 
 @router.put("/{id}", response_model=schemas.ClienteResponse)
 def atualizar_cliente(id: str, cliente_update: schemas.ClienteUpdate, db: Session = Depends(get_db)):

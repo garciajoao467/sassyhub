@@ -15,13 +15,24 @@ async def executar_sync(cliente_id: str, db: Session):
     if not rclone_path:
         return False, "Executável do Rclone não encontrado no PATH do sistema."
 
-    # Utilizamos aspas duplas no subprocesso caso haja espaços no caminho
+    # Caminhos fixos de configuração da Sassy
+    filtro_path = r"A:\Config Rclone\filtrostmp.txt"
+    log_path = r"A:\Config Rclone\log_producao.txt"
+
+    # Montando a lista exata do script de produção
     cmd = [
         rclone_path,
-        "sync",
+        "bisync",
         cliente.pasta_origem,
         cliente.pasta_destino,
-        "-v"
+        "--force",
+        "--filter-from", filtro_path,
+        "--track-renames",
+        "--drive-chunk-size", "128M",
+        "--transfers", "8",
+        "--checkers", "16",
+        "--log-file", log_path,
+        "--log-level", "NOTICE"
     ]
 
     try:
@@ -50,7 +61,7 @@ async def executar_sync(cliente_id: str, db: Session):
             mensagem += f"STDERR:\n{err_str}"
             
         if not mensagem:
-            mensagem = "Nenhuma saída gerada pelo Rclone."
+            mensagem = "Nenhuma saída gerada pelo Rclone na interface (gravado no log_producao.txt)."
         
         # Registra o resultado na tabela de Logs
         novo_log = Log(

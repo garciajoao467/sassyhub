@@ -45,12 +45,13 @@ async def rotina_diaria_sync():
         logger.info("Nenhum cliente ativo no momento. Rotina finalizada.")
         return
 
-    # Executa a sync de todos os clientes concorrentemente com asyncio.gather
-    # (Para não sobrecarregar a rede, poderia ser um loop await sequencial se preferir)
-    tasks = [sync_cliente_wrapper(cid) for cid in cliente_ids]
-    await asyncio.gather(*tasks)
+    # Executa o sync de cada cliente sequencialmente (exatamente como o .bat original)
+    # Isso impede que dezenas de instâncias do rclone consumam toda a CPU/Rede ao mesmo tempo.
+    for cid in cliente_ids:
+        await sync_cliente_wrapper(cid)
     
     logger.info("Rotina de sincronização de clientes finalizada.")
 
-# Configura o job para rodar a cada 60 minutos como padrão
-scheduler.add_job(rotina_diaria_sync, 'interval', minutes=60)
+# Configura o job para rodar diariamente (ex: todos os dias às 02:00 da manhã)
+# Você pode alterar a hora conforme a sua necessidade de negócio
+scheduler.add_job(rotina_diaria_sync, 'cron', hour=2, minute=0)
