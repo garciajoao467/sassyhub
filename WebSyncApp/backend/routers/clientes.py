@@ -1,22 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import List
-from database import get_db, SessionLocal
+from database import get_db
 import schemas
 from models import Cliente, Log
 from scheduler import rotina_diaria_sync
-from services.sync_service import executar_sync
+from services.sync_service import executar_sync, executar_sync_stream
 
 router = APIRouter(prefix="/api/clientes", tags=["Clientes"])
 
-# Função assíncrona auxiliar para executar o sync em background de forma segura,
-# abrindo sua própria sessão com o banco de dados.
-async def bg_sync_task(cliente_id: str):
-    db = SessionLocal()
-    try:
-        await executar_sync(cliente_id, db)
-    finally:
-        db.close()
 
 @router.get("/", response_model=List[schemas.ClienteResponse])
 def listar_clientes(db: Session = Depends(get_db)):
@@ -112,3 +105,8 @@ async def sync_manual_cliente(id: str, db: Session = Depends(get_db)):
         "sucesso": sucesso,
         "mensagem": mensagem
     }
+
+@router.get("/{id}/sync-stream")
+async def sync_stream_cliente(id: str, db: Session = Depends(get_db)):
+    """Inicia a sincronização e retorna os logs em tempo real (Server-Sent Events)."""
+    return StreamingResponse(executar_sync_stream(id, db), media_type="text/event-stream")
