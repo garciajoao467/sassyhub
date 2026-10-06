@@ -52,6 +52,39 @@ async def rotina_diaria_sync():
     
     logger.info("Rotina de sincronização de clientes finalizada.")
 
-# Configura o job para rodar diariamente (ex: todos os dias às 02:00 da manhã)
-# Você pode alterar a hora conforme a sua necessidade de negócio
-scheduler.add_job(rotina_diaria_sync, 'cron', hour=2, minute=0)
+    logger.info("Rotina de sincronização de clientes finalizada.")
+
+def atualizar_agendamento():
+    from models import Configuracao
+    db = SessionLocal()
+    try:
+        mode_conf = db.query(Configuracao).filter(Configuracao.chave == "sync_mode").first()
+        val_conf = db.query(Configuracao).filter(Configuracao.chave == "sync_value").first()
+        
+        mode = mode_conf.valor if mode_conf else "cron"
+        value = val_conf.valor if val_conf else "02:00"
+        
+        # Remove job anterior se existir
+        if scheduler.get_job('job_sync'):
+            scheduler.remove_job('job_sync')
+            
+        if mode == "cron":
+            # Formato esperado: "HH:MM"
+            hora, minuto = value.split(":")
+            scheduler.add_job(rotina_diaria_sync, 'cron', hour=int(hora), minute=int(minuto), id='job_sync')
+            logger.info(f"Agendamento atualizado para CRON diário às {value}.")
+        elif mode == "interval":
+            # Formato esperado: X (horas)
+            horas = int(value)
+            scheduler.add_job(rotina_diaria_sync, 'interval', hours=horas, id='job_sync')
+            logger.info(f"Agendamento atualizado para INTERVALO a cada {horas} hora(s).")
+    except Exception as e:
+        logger.error(f"Falha ao atualizar agendamento: {e}")
+        # Fallback de segurança
+        if not scheduler.get_job('job_sync'):
+            scheduler.add_job(rotina_diaria_sync, 'cron', hour=2, minute=0, id='job_sync')
+    finally:
+        db.close()
+
+# Configura o job com os valores iniciais do banco (ou fallback)
+atualizar_agendamento()

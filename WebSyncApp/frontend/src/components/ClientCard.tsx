@@ -90,13 +90,9 @@ export const ClientCard: React.FC<ClientCardProps> = ({
                       : client.status === 'synced'
                       ? 'Sincronizado'
                       : client.status === 'error'
-                      ? 'Erro de Rede'
+                      ? 'Falha na Sinc.'
                       : 'Pausado'}
                   </span>
-                </span>
-                <span className="text-[#454256]">·</span>
-                <span className="font-mono text-[#8a8698] tabular-nums text-[11px]">
-                  {client.intervalMinutes === 0 ? 'Tempo Real' : `A cada ${client.intervalMinutes}m`}
                 </span>
               </div>
             </div>
@@ -142,23 +138,14 @@ export const ClientCard: React.FC<ClientCardProps> = ({
           </div>
         </div>
 
-        {/* Progress Bar (Aprovada: Visual Sassy Lavender) */}
+        {/* Simple Loading Spinner */}
         {isActuallySyncing && (
           <div className="mb-3.5 p-2.5 rounded-xl bg-[#1b172a] border border-[#a855f7]/40 animate-in fade-in duration-200">
-            <div className="flex items-center justify-between text-xs mb-1.5">
-              <span className="font-bold text-[#d8b4fe] flex items-center gap-1.5 text-[11px]">
-                <RotateCw className="w-3 h-3 animate-spin text-[#b886fd]" />
+            <div className="flex items-center justify-center text-xs">
+              <span className="font-bold text-[#d8b4fe] flex items-center gap-2 text-[12px]">
+                <RotateCw className="w-4 h-4 animate-spin text-[#b886fd]" />
                 Sincronizando arquivos...
               </span>
-              <span className="font-mono font-bold text-white tabular-nums text-[11px]">
-                {client.stats.progressPercent || 74}% · {client.stats.speedMbps || 36.2} MB/s
-              </span>
-            </div>
-            <div className="w-full h-2 bg-[#12111a] rounded-full overflow-hidden p-[1px] border border-[#2f2b42]">
-              <div
-                className="h-full bg-gradient-to-r from-[#8b5cf6] via-[#a855f7] to-[#c084fc] transition-all duration-300 rounded-full shadow-sm shadow-purple-500/50"
-                style={{ width: `${client.stats.progressPercent || 74}%` }}
-              />
             </div>
           </div>
         )}

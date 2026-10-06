@@ -26,3 +26,9 @@ class Log(Base):
     mensagem = Column(Text, nullable=True)
 
     cliente = relationship("Cliente", back_populates="logs")
+
+class Configuracao(Base):
+    __tablename__ = "configuracoes"
+
+    chave = Column(String, primary_key=True, index=True)
+    valor = Column(String, nullable=False)

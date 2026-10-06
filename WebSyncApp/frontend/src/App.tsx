@@ -6,6 +6,7 @@ import { ClientCard } from './components/ClientCard';
 import { ClientModal } from './components/ClientModal';
 import { LogsModal } from './components/LogsModal';
 import { ApiSettingsModal } from './components/ApiSettingsModal';
+import { ScheduleModal } from './components/ScheduleModal';
 import { ToastContainer } from './components/Toast';
 import {
   SyncClient,
@@ -34,6 +35,7 @@ export default function App() {
   const [editingClient, setEditingClient] = useState<SyncClient | null>(null);
   const [logsModalClient, setLogsModalClient] = useState<SyncClient | null>(null);
   const [isApiSettingsOpen, setIsApiSettingsOpen] = useState(false);
+  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
 
   const [syncingIds, setSyncingIds] = useState<Set<string>>(new Set([]));
   const [isSyncingAll, setIsSyncingAll] = useState(false);
@@ -164,14 +166,14 @@ export default function App() {
     addToast('success', 'Todos os Clientes Ativados', 'A sincronização automática foi ativada para toda a fila.');
   };
 
-  const handleForceSync = async (id: string) => {
+  const handleForceSync = (id: string) => {
     const client = clients.find((c) => c.id === id);
     if (!client) return;
 
     setSyncingIds((prev) => new Set([...prev, id]));
     setClients((prev) =>
       prev.map((c) =>
-        c.id === id ? { ...c, status: 'syncing' as SyncStatus } : c
+        c.id === id ? { ...c, status: 'syncing' as SyncStatus, stats: { ...c.stats, progressPercent: 0, speedMbps: 0 } } : c
       )
     );
 
@@ -187,47 +189,72 @@ export default function App() {
 
     addToast('info', 'Sincronização Iniciada', `Verificando alterações em ${client.name}...`);
 
-    await syncApiService.forceSync(id);
+    syncApiService.forceSyncStream(
+      id,
+      (percent, speedStr) => {
+        const speedNum = speedStr ? parseFloat(speedStr) : 0;
+        setClients((prev) =>
+          prev.map((c) =>
+            c.id === id
+              ? {
+                  ...c,
+                  stats: {
+                    ...c.stats,
+                    progressPercent: percent,
+                    speedMbps: speedNum > 0 ? speedNum : c.stats.speedMbps,
+                  },
+                }
+              : c
+          )
+        );
+      },
+      (logEntry) => {
+        setLogs((prev) => ({
+          ...prev,
+          [id]: [...(prev[id] || []), logEntry],
+        }));
+      },
+      (success, errorMsg) => {
+        setSyncingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
 
-    setTimeout(() => {
-      setSyncingIds((prev) => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
+        const finishTime = new Date();
+        const finishTimeStr = finishTime.toTimeString().split(' ')[0] + '.' + String(finishTime.getMilliseconds()).padStart(3, '0');
 
-      const finishTime = new Date();
-      const finishTimeStr = finishTime.toTimeString().split(' ')[0] + '.' + String(finishTime.getMilliseconds()).padStart(3, '0');
+        setClients((prev) =>
+          prev.map((c) =>
+            c.id === id
+              ? {
+                  ...c,
+                  status: (success ? 'synced' : 'error') as SyncStatus,
+                  autoSync: success ? c.autoSync : false,
+                  lastSyncAt: finishTime.toISOString(),
+                  stats: {
+                    ...c.stats,
+                    progressPercent: 100,
+                  },
+                }
+              : c
+          )
+        );
 
-      setClients((prev) =>
-        prev.map((c) =>
-          c.id === id
-            ? {
-                ...c,
-                status: 'synced' as SyncStatus,
-                lastSyncAt: finishTime.toISOString(),
-                stats: {
-                  ...c.stats,
-                  filesCount: (c.stats.filesCount || 0) + 2,
-                },
-              }
-            : c
-        )
-      );
+        addLog(id, {
+          timestamp: finishTimeStr,
+          level: success ? 'SUCCESS' : 'ERROR',
+          message: success ? `Sincronização forçada concluída com sucesso. Integridade validada.` : (errorMsg || `Sincronização finalizada com erros.`),
+          details: `Destino: ${client.destinationPath}`,
+        });
 
-      addLog(id, {
-        timestamp: finishTimeStr,
-        level: 'SUCCESS',
-        message: `Sincronização forçada concluída com sucesso. Integridade validada.`,
-        details: `Destino atualizado em ${client.destinationPath}`,
-      });
-
-      addToast(
-        'success',
-        'Sincronização Concluída',
-        `Todos os arquivos de ${client.name} foram sincronizados.`
-      );
-    }, 2400);
+        addToast(
+          success ? 'success' : 'error',
+          success ? 'Sincronização Concluída' : 'Erro na Sincronização',
+          success ? `Todos os arquivos de ${client.name} foram sincronizados.` : (errorMsg || `Houve uma falha ao sincronizar ${client.name}.`)
+        );
+      }
+    );
   };
 
   const handleSyncAll = () => {
@@ -337,6 +364,7 @@ export default function App() {
         onOpenNewClientModal={handleOpenNewClientModal}
         onSyncAll={handleSyncAll}
         onOpenApiSettings={() => setIsApiSettingsOpen(true)}
+        onOpenScheduleModal={() => setIsScheduleModalOpen(true)}
         isSyncingAll={isSyncingAll}
       />
 
@@ -420,9 +448,9 @@ export default function App() {
         <div className="flex items-center gap-2">
           <span className="font-extrabold text-white">WebSync Manager</span>
           <span>·</span>
-          <span>
-            Identidade visual inspirada na <span className="text-[#b886fd] font-bold">Sassy Square</span>
-          </span>
+          <span>Desenvolvido por João Vitor Garcia</span>
+          <span>·</span>
+          <span>Uma aplicação <span className="text-[#b886fd] font-bold">Sassy Square</span></span>
         </div>
         <div className="flex items-center gap-3">
           <span className="font-mono text-[11px] text-[#8e8a9d]">FastAPI Background Engine</span>
@@ -463,6 +491,14 @@ export default function App() {
         onUrlChange={(newUrl) => {
           setEngineStats((prev) => ({ ...prev, fastApiUrl: newUrl }));
           addToast('info', 'Endpoint Atualizado', `Novo endereço definido: ${newUrl}`);
+        }}
+      />
+
+      <ScheduleModal
+        isOpen={isScheduleModalOpen}
+        onClose={() => setIsScheduleModalOpen(false)}
+        onSave={() => {
+          addToast('success', 'Agendamento Atualizado', 'A periodicidade da sincronização foi salva com sucesso.');
         }}
       />
 

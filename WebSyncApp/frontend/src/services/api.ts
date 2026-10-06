@@ -89,6 +89,63 @@ class SyncApiService {
     return true;
   }
 
+  forceSyncStream(
+    clientId: string,
+    onProgress: (percent: number, speed: string) => void,
+    onLog: (log: LogEntry) => void,
+    onComplete: (success: boolean, errorMsg?: string) => void
+  ): () => void {
+    const eventSource = new EventSource(`${this.baseUrl}/api/clientes/${clientId}/sync-stream`);
+
+    eventSource.onmessage = (event) => {
+      const data = event.data;
+
+      if (data.includes('[SYNC_CONCLUIDO]')) {
+        onComplete(true);
+        eventSource.close();
+        return;
+      }
+      if (data.includes('[SYNC_ERRO]')) {
+        const errorMsg = data.replace('[SYNC_ERRO]', '').trim();
+        onComplete(false, errorMsg);
+        eventSource.close();
+        return;
+      }
+
+      if (data.includes('Transferred:') && data.includes('%')) {
+        const percentMatch = data.match(/(\d+)%/);
+        const speedMatch = data.match(/,\s*([\d.]+\s*[a-zA-Z]+\/s)/);
+        
+        let percent = 0;
+        let speed = '';
+        if (percentMatch) percent = parseInt(percentMatch[1], 10);
+        if (speedMatch) speed = speedMatch[1];
+        
+        if (percent > 0 || speed) {
+          onProgress(percent, speed);
+        }
+      }
+
+      if (data.trim() && !data.includes('Transferred:') && !data.includes('Elapsed time:')) {
+        onLog({
+          id: `log-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+          timestamp: new Date().toISOString(),
+          level: data.toLowerCase().includes('error') ? 'ERROR' : 'INFO',
+          message: data.trim(),
+        });
+      }
+    };
+
+    eventSource.onerror = () => {
+      onComplete(false);
+      eventSource.close();
+    };
+
+    return () => {
+      eventSource.close();
+    };
+  }
+
   async forceSyncAll(): Promise<boolean> {
     try {
       await fetch(`${this.baseUrl}/api/clientes/sync-global`, { method: 'POST' });
@@ -146,6 +203,27 @@ class SyncApiService {
       await fetch(`${this.baseUrl}/api/clientes/${clientId}`, { method: 'DELETE' });
     } catch {}
     return true;
+  }
+
+  async getScheduleConfig(): Promise<{ sync_mode: string; sync_value: string }> {
+    const response = await fetch(`${this.baseUrl}/api/config/`);
+    if (!response.ok) {
+      throw new Error('Falha ao buscar configurações de agendamento');
+    }
+    return response.json();
+  }
+
+  async updateScheduleConfig(config: { sync_mode: string; sync_value: string }): Promise<void> {
+    const response = await fetch(`${this.baseUrl}/api/config/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(config),
+    });
+    if (!response.ok) {
+      throw new Error('Falha ao atualizar configurações de agendamento');
+    }
   }
 }
 

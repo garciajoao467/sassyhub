@@ -30,8 +30,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from routers import clientes, config
+
 # Registrar os roteadores (routers)
 app.include_router(clientes.router)
+app.include_router(config.router)
 
 @app.get("/")
 def root():

@@ -1,10 +1,11 @@
 import React from 'react';
-import { RefreshCw, Plus, Sliders } from 'lucide-react';
+import { RefreshCw, Plus, Sliders, CalendarClock } from 'lucide-react';
 
 interface HeaderProps {
   onOpenNewClientModal: () => void;
   onSyncAll: () => void;
   onOpenApiSettings: () => void;
+  onOpenScheduleModal: () => void;
   isSyncingAll?: boolean;
 }
 
@@ -12,6 +13,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenNewClientModal,
   onSyncAll,
   onOpenApiSettings,
+  onOpenScheduleModal,
   isSyncingAll = false,
 }) => {
   return (
@@ -20,30 +22,27 @@ export const Header: React.FC<HeaderProps> = ({
         
         {/* Brand Lockup inspired directly by Sassy Square */}
         <div className="flex items-center gap-3 shrink-0">
-          <div className="w-10 h-10 rounded-xl bg-[#1a1824] border border-[#a855f7]/50 flex items-center justify-center relative overflow-hidden group shadow-md shadow-purple-950/40">
-            <div className="absolute inset-0 bg-gradient-to-br from-[#a855f7]/20 to-transparent" />
-            <span className="font-extrabold text-lg text-white group-hover:text-[#b886fd] transition-colors">
-              S<span className="text-[#b886fd]">²</span>
-            </span>
-          </div>
+          <img src="/sassy-logo.png" alt="Sassy Marketing" className="h-8 object-contain" />
 
-          <div className="flex flex-col">
+          <div className="flex flex-col ml-1 border-l border-[#232130] pl-3">
             <div className="flex items-center gap-2">
               <span className="text-xl font-extrabold tracking-tight text-white font-sans">
-                WebSync <span className="text-[#b886fd] font-black">sassy</span>
-              </span>
-              <span className="hidden sm:inline-flex text-[10px] tracking-widest uppercase font-semibold text-[#d8b4fe] bg-[#1d1633] px-2.5 py-0.5 rounded-full border border-[#a855f7]/40">
-                Engine
+                SassySync
               </span>
             </div>
-            <span className="text-xs text-[#9d9ca7] hidden md:inline">
-              Background File Synchronization & Automation
-            </span>
           </div>
         </div>
 
         {/* Primary Actions matching Sassy Square Screenshot */}
         <div className="flex items-center gap-2.5 shrink-0">
+          <button
+            onClick={onOpenScheduleModal}
+            className="inline-flex items-center justify-center w-10 h-10 bg-[#181722] hover:bg-[#22212f] border border-[#2e2c3e] hover:border-[#a855f7]/50 rounded-xl transition-all duration-200 cursor-pointer text-slate-300 hover:text-[#b886fd]"
+            title="Configurar Periodicidade do Auto-Sync"
+          >
+            <CalendarClock className="w-4 h-4" />
+          </button>
+
           <button
             onClick={onSyncAll}
             disabled={isSyncingAll}
