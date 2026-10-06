@@ -1,0 +1,6 @@
+{
+  "name": "WebSync Manager",
+  "description": "Painel de controle visual moderno e responsivo para gerenciamento de sincronização de arquivos em background com identidade inspirada na Sassy Square.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
