@@ -28,6 +28,7 @@ class ClienteStatusUpdate(BaseModel):
 class ClienteResponse(ClienteBase):
     id: str
     criado_em: datetime
+    ultimo_sync: Optional[datetime] = None
 
     # Permite que o Pydantic leia diretamente dos atributos do objeto SQLAlchemy
     model_config = ConfigDict(from_attributes=True)

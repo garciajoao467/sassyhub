@@ -113,10 +113,10 @@ export default function App() {
       prev.map((c) =>
         c.id === clientId
           ? {
-              ...c,
-              autoSync: targetAutoSync,
-              status: targetAutoSync ? 'synced' : 'paused',
-            }
+            ...c,
+            autoSync: targetAutoSync,
+            status: targetAutoSync ? 'synced' : 'paused',
+          }
           : c
       )
     );
@@ -145,6 +145,12 @@ export default function App() {
   };
 
   const handlePauseAll = () => {
+    clients.forEach((c) => {
+      if (c.autoSync) {
+        syncApiService.toggleAutoSync(c.id, false).catch(() => {});
+      }
+    });
+
     setClients((prev) =>
       prev.map((c) => ({
         ...c,
@@ -152,10 +158,16 @@ export default function App() {
         status: 'paused',
       }))
     );
-    addToast('info', 'Todos os Clientes Pausados', 'A sincronização em segundo plano foi pausada para todos os jobs.');
+    addToast('info', 'Todos os Clientes Pausados', 'A sincronização em segundo plano foi pausada para todos os clientes ativos.');
   };
 
   const handleResumeAll = () => {
+    clients.forEach((c) => {
+      if (!c.autoSync) {
+        syncApiService.toggleAutoSync(c.id, true).catch(() => {});
+      }
+    });
+
     setClients((prev) =>
       prev.map((c) => ({
         ...c,
@@ -197,13 +209,13 @@ export default function App() {
           prev.map((c) =>
             c.id === id
               ? {
-                  ...c,
-                  stats: {
-                    ...c.stats,
-                    progressPercent: percent,
-                    speedMbps: speedNum > 0 ? speedNum : c.stats.speedMbps,
-                  },
-                }
+                ...c,
+                stats: {
+                  ...c.stats,
+                  progressPercent: percent,
+                  speedMbps: speedNum > 0 ? speedNum : c.stats.speedMbps,
+                },
+              }
               : c
           )
         );
@@ -228,15 +240,15 @@ export default function App() {
           prev.map((c) =>
             c.id === id
               ? {
-                  ...c,
-                  status: (success ? 'synced' : 'error') as SyncStatus,
-                  autoSync: success ? c.autoSync : false,
-                  lastSyncAt: finishTime.toISOString(),
-                  stats: {
-                    ...c.stats,
-                    progressPercent: 100,
-                  },
-                }
+                ...c,
+                status: (success ? 'synced' : 'error') as SyncStatus,
+                autoSync: success ? c.autoSync : false,
+                lastSyncAt: finishTime.toISOString(),
+                stats: {
+                  ...c.stats,
+                  progressPercent: 100,
+                },
+              }
               : c
           )
         );
@@ -290,10 +302,10 @@ export default function App() {
         prev.map((c) =>
           c.id === editingClient.id
             ? {
-                ...c,
-                ...formData,
-                status: formData.autoSync ? c.status : 'paused',
-              }
+              ...c,
+              ...formData,
+              status: formData.autoSync ? c.status : 'paused',
+            }
             : c
         )
       );
@@ -354,7 +366,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#0e0e13] text-white flex flex-col font-sans selection:bg-[#a855f7]/30 selection:text-white relative overflow-x-hidden">
-      
+
       {/* Subtle deep purple ambient radial glows on edges as seen in Sassy Square screenshot */}
       <div className="fixed -top-40 -left-40 w-[600px] h-[600px] bg-[#23153c]/40 rounded-full blur-[140px] pointer-events-none -z-10" />
       <div className="fixed top-1/3 -right-40 w-[600px] h-[600px] bg-[#1e1338]/30 rounded-full blur-[140px] pointer-events-none -z-10" />
@@ -370,17 +382,12 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        
+
         {/* Header Banner */}
         <div className="mb-8 pb-7 border-b border-[#232130]">
           <h1 className="text-3xl sm:text-4xl md:text-5xl font-black text-white tracking-tight leading-[1.1]">
             Something <span className="text-[#b886fd]">sassy</span> is syncing.
           </h1>
-          
-          <p className="text-sm text-[#9d9aa8] mt-2 max-w-xl leading-relaxed">
-            Arraste os clientes entre <strong className="text-white">Ativos</strong> e{' '}
-            <strong className="text-white">Inativos</strong> para controlar o motor FastAPI em background.
-          </p>
         </div>
 
         {/* Search & View Mode Switcher */}
@@ -435,7 +442,7 @@ export default function App() {
                 onEdit={handleEditClient}
                 onDelete={handleDeleteClient}
                 isSyncingNow={syncingIds.has(client.id)}
-                onDragStart={() => {}}
+                onDragStart={() => { }}
               />
             ))}
           </div>

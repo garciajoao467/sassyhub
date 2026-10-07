@@ -55,7 +55,7 @@ class SyncApiService {
         destinationPath: c.pasta_destino,
         autoSync: c.status_ativo,
         status: c.status_ativo ? 'synced' : 'paused',
-        lastSyncAt: c.criado_em,
+        lastSyncAt: c.ultimo_sync ? (c.ultimo_sync.endsWith('Z') ? c.ultimo_sync : c.ultimo_sync + 'Z') : null,
         nextSyncAt: null,
         intervalMinutes: 15,
         excludePatterns: '',

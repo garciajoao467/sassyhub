@@ -2,6 +2,7 @@ import asyncio
 import shutil
 import sys
 from sqlalchemy.orm import Session
+from datetime import datetime, timezone
 from models import Cliente, Log
 
 async def executar_sync(cliente_id: str, db: Session):
@@ -97,6 +98,8 @@ async def executar_sync(cliente_id: str, db: Session):
         # Desativa o auto-sync em caso de erro fatal
         if not status_sucesso:
             cliente.status_ativo = False
+
+        cliente.ultimo_sync = datetime.now(timezone.utc)
             
         db.commit()
         
@@ -115,6 +118,7 @@ async def executar_sync(cliente_id: str, db: Session):
         
         # Desativa o cliente
         cliente.status_ativo = False
+        cliente.ultimo_sync = datetime.now(timezone.utc)
         
         db.commit()
         
@@ -232,6 +236,8 @@ async def executar_sync_stream(cliente_id: str, db: Session):
     
     if not status_sucesso:
         cliente.status_ativo = False
+        
+    cliente.ultimo_sync = datetime.now(timezone.utc)
         
     db.commit()
     

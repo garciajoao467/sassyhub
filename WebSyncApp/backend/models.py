@@ -13,6 +13,7 @@ class Cliente(Base):
     pasta_destino = Column(String, nullable=False)
     status_ativo = Column(Boolean, default=True, nullable=False)
     criado_em = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    ultimo_sync = Column(DateTime, nullable=True)
 
     logs = relationship("Log", back_populates="cliente")
 
