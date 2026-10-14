@@ -1,0 +1,43 @@
+# Environments & Dependencies
+venv/
+.venv/
+env/
+**/venv/
+**/node_modules/
+node_modules/
+
+# Python
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+*.pyd
+.Python
+*.sqlite3
+*.db
+websync.db
+**/websync.db
+
+# Build outputs
+build/
+dist/
+**/dist/
+dist-ssr/
+coverage/
+.vite/
+
+# Logs & temp files
+*.log
+**/*.log
+.DS_Store
+Thumbs.db
+
+# Credentials & Rclone configurations
+*.conf
+rclone.conf
+**/rclone.conf
+
+# Environment variables
+.env
+.env.*
+!.env.example
