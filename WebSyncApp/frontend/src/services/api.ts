@@ -205,6 +205,77 @@ class SyncApiService {
     return true;
   }
 
+  async previewRemote(nome: string): Promise<{
+    remote_nome: string;
+    pasta_destino_sugerida: string;
+    pasta_origem_sugerida: string;
+    remote_ja_existe: boolean;
+    rclone_conf_path: string;
+  } | null> {
+    try {
+      const res = await fetch(`${this.baseUrl}/api/clientes/preview-remote?nome=${encodeURIComponent(nome)}`);
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null;
+    }
+  }
+
+  async onboardClient(data: {
+    nome: string;
+    pasta_id: string;
+    pasta_origem?: string;
+    nome_remote?: string;
+    status_ativo?: boolean;
+    iniciar_carga_zero?: boolean;
+  }): Promise<{
+    cliente: any;
+    remote_nome: string;
+    rclone_conf_path: string;
+    mensagem: string;
+  } | null> {
+    const res = await fetch(`${this.baseUrl}/api/clientes/onboard`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Falha ao registrar novo cliente e remote no Rclone');
+    }
+    return await res.json();
+  }
+
+  cargaZeroStream(
+    clientId: string,
+    onLine: (line: string) => void,
+    onComplete: (success: boolean, message?: string) => void
+  ): () => void {
+    const eventSource = new EventSource(`${this.baseUrl}/api/clientes/${clientId}/carga-zero-stream`);
+
+    eventSource.onmessage = (event) => {
+      const line = event.data;
+      onLine(line);
+
+      if (line.includes('[CARGA_ZERO_CONCLUIDO]')) {
+        eventSource.close();
+        onComplete(true, line);
+      } else if (line.includes('[CARGA_ZERO_ERRO]')) {
+        eventSource.close();
+        onComplete(false, line);
+      }
+    };
+
+    eventSource.onerror = () => {
+      eventSource.close();
+      onComplete(false, 'Conexão interrompida com o servidor.');
+    };
+
+    return () => {
+      eventSource.close();
+    };
+  }
+
   async getScheduleConfig(): Promise<{ sync_mode: string; sync_value: string }> {
     const response = await fetch(`${this.baseUrl}/api/config/`);
     if (!response.ok) {

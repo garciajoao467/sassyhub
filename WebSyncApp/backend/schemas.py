@@ -42,3 +42,18 @@ class LogResponse(BaseModel):
     mensagem: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+# Modelo para Onboarding de Novo Cliente (criação de remote + registro)
+class ClienteOnboardRequest(BaseModel):
+    nome: str
+    pasta_id: str
+    pasta_origem: Optional[str] = None
+    nome_remote: Optional[str] = None
+    status_ativo: bool = True
+    iniciar_carga_zero: bool = True
+
+class ClienteOnboardResponse(BaseModel):
+    cliente: ClienteResponse
+    remote_nome: str
+    rclone_conf_path: str
+    mensagem: str

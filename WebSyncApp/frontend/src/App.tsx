@@ -479,6 +479,14 @@ export default function App() {
           setEditingClient(null);
         }}
         onSave={handleSaveClient}
+        onClientCreated={(newClient) => {
+          setClients((prev) => [newClient, ...prev.filter((c) => c.id !== newClient.id)]);
+          addToast(
+            'success',
+            'Cliente e Remote Criados!',
+            `${newClient.name} foi inicializado e adicionado aos ${newClient.autoSync ? 'Ativos' : 'Inativos'}.`
+          );
+        }}
         editingClient={editingClient}
       />
 
