@@ -115,32 +115,22 @@ def gerar_nome_remote(nome_cliente: str) -> str:
     return f"remote_{camel}"
 
 
-try:
-    from dotenv import load_dotenv
-    # Carrega .env do diretório backend se existir
-    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
-except ImportError:
-    pass
-
-
 def obter_template_drive(conf_path: str) -> Dict[str, str]:
     """
-    Lê variáveis de ambiente (.env) ou arquivos rclone.conf existentes para
-    extrair as credenciais base de OAuth do Google Drive (client_id, client_secret, token com refresh_token).
+    Extrai automaticamente as credenciais base de OAuth do Google Drive
+    (client_id, client_secret, token com refresh_token e scope) a partir dos
+    remotes já configurados nos arquivos rclone.conf existentes.
+    Nenhuma configuração manual no .env é necessária.
     """
     template = {
         "type": "drive",
-        "client_id": os.environ.get("RCLONE_DRIVE_CLIENT_ID", ""),
-        "client_secret": os.environ.get("RCLONE_DRIVE_CLIENT_SECRET", ""),
+        "client_id": "",
+        "client_secret": "",
         "scope": "drive",
-        "token": os.environ.get("RCLONE_DRIVE_TOKEN", ""),
+        "token": "",
     }
 
-    # Se já tivermos client_id e token completo das variáveis de ambiente / .env, usamos direto
-    if template["client_id"] and template["token"]:
-        return template
-
-    # Busca em cascata nos arquivos rclone.conf disponíveis (conf ativo, workspace base e servidor)
+    # Busca em cascata nos arquivos rclone.conf disponíveis (conf ativo, workspace base e servidor de produção)
     candidatos = [conf_path, str(WORKSPACE_RCLONE_CONF), SERVER_RCLONE_CONF]
     for c_path in candidatos:
         if not c_path or not os.path.exists(c_path):
@@ -150,20 +140,24 @@ def obter_template_drive(conf_path: str) -> Dict[str, str]:
         try:
             cp.read(c_path, encoding='utf-8')
             for sec in cp.sections():
-                if cp[sec].get("type") == "drive" and cp[sec].get("token"):
+                if cp[sec].get("type") == "drive":
+                    # Extrai client_id e client_secret se disponíveis
+                    if not template["client_id"] and cp[sec].get("client_id"):
+                        template["client_id"] = cp[sec].get("client_id", "").strip()
+                    if not template["client_secret"] and cp[sec].get("client_secret"):
+                        template["client_secret"] = cp[sec].get("client_secret", "").strip()
+                    
+                    # Extrai o token OAuth com refresh_token se disponível
                     token_val = cp[sec].get("token", "")
-                    if "refresh_token" in token_val:
-                        if not template["client_id"]:
-                            template["client_id"] = cp[sec].get("client_id", "")
-                        if not template["client_secret"]:
-                            template["client_secret"] = cp[sec].get("client_secret", "")
-                        template["scope"] = cp[sec].get("scope", "drive")
-                        if not template["token"]:
-                            template["token"] = token_val
+                    if not template["token"] and "refresh_token" in token_val:
+                        template["token"] = token_val.strip()
+                    
+                    if cp[sec].get("scope"):
+                        template["scope"] = cp[sec].get("scope")
 
-                        # Se obtivemos um token válido e client_id, podemos retornar
-                        if template["token"] and template["client_id"]:
-                            return template
+                    # Se já tivermos tanto o token quanto o client_id, o template está completo
+                    if template["token"] and template["client_id"]:
+                        return template
         except Exception as e:
             print(f"Aviso ao ler template do rclone.conf ({c_path}): {e}")
 
