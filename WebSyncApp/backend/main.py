@@ -1,4 +1,9 @@
 import uvicorn
+from dotenv import load_dotenv
+
+# Carrega variáveis de ambiente do arquivo .env
+load_dotenv()
+
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from database import engine, Base
