@@ -155,53 +155,63 @@ class SyncApiService {
 
   async toggleAutoSync(clientId: string, autoSync: boolean): Promise<boolean> {
     try {
-      await fetch(`${this.baseUrl}/api/clientes/${clientId}/status`, {
+      const res = await fetch(`${this.baseUrl}/api/clientes/${clientId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status_ativo: autoSync }),
       });
-    } catch {}
-    return true;
-  }
-
-  async createClient(data: Partial<SyncClient>): Promise<any> {
-    try {
-      const res = await fetch(`${this.baseUrl}/api/clientes/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          nome: data.name,
-          pasta_origem: data.sourcePath,
-          pasta_destino: data.destinationPath,
-          status_ativo: data.autoSync ?? true
-        }),
-      });
-      return await res.json();
+      return res.ok;
     } catch {
-      return null;
+      return false;
     }
   }
 
+  async createClient(data: Partial<SyncClient>): Promise<any> {
+    const res = await fetch(`${this.baseUrl}/api/clientes/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        nome: data.name,
+        pasta_origem: data.sourcePath,
+        pasta_destino: data.destinationPath,
+        status_ativo: data.autoSync ?? true
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Falha ao criar cliente no banco de dados');
+    }
+    return await res.json();
+  }
+
   async updateClient(clientId: string, data: Partial<SyncClient>): Promise<boolean> {
-    try {
-      await fetch(`${this.baseUrl}/api/clientes/${clientId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          nome: data.name,
-          pasta_origem: data.sourcePath,
-          pasta_destino: data.destinationPath,
-          status_ativo: data.autoSync
-        }),
-      });
-    } catch {}
+    const payload: Record<string, any> = {
+      nome: data.name,
+      pasta_origem: data.sourcePath,
+      pasta_destino: data.destinationPath,
+    };
+    if (data.autoSync !== undefined) {
+      payload.status_ativo = data.autoSync;
+    }
+
+    const res = await fetch(`${this.baseUrl}/api/clientes/${clientId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Falha ao atualizar cliente no banco de dados');
+    }
     return true;
   }
 
   async deleteClient(clientId: string): Promise<boolean> {
-    try {
-      await fetch(`${this.baseUrl}/api/clientes/${clientId}`, { method: 'DELETE' });
-    } catch {}
+    const res = await fetch(`${this.baseUrl}/api/clientes/${clientId}`, { method: 'DELETE' });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Falha ao deletar cliente no banco de dados');
+    }
     return true;
   }
 
