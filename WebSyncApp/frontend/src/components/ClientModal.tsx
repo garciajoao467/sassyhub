@@ -37,8 +37,9 @@ export const ClientModal: React.FC<ClientModalProps> = ({
   const [sourcePath, setSourcePath] = useState('');
   const [destinationPath, setDestinationPath] = useState('');
   const [customRemoteName, setCustomRemoteName] = useState('');
+  const [autoSync, setAutoSync] = useState(true);
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [autoStartCargaZero, setAutoStartCargaZero] = useState(true);
+  const [autoStartCargaZero, setAutoStartCargaZero] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // Carga Zero state
@@ -94,6 +95,7 @@ export const ClientModal: React.FC<ClientModalProps> = ({
       setName(editingClient.name);
       setSourcePath(editingClient.sourcePath);
       setDestinationPath(editingClient.destinationPath);
+      setAutoSync(editingClient.autoSync);
       setFolderId('');
       setCustomRemoteName('');
       setShowAdvanced(false);
@@ -104,7 +106,8 @@ export const ClientModal: React.FC<ClientModalProps> = ({
       setDestinationPath('');
       setCustomRemoteName('');
       setShowAdvanced(false);
-      setAutoStartCargaZero(true);
+      setAutoStartCargaZero(false);
+      setAutoSync(true);
     }
     setErrors({});
     setIsSubmitting(false);
@@ -158,8 +161,8 @@ export const ClientModal: React.FC<ClientModalProps> = ({
         name: name.trim(),
         sourcePath: sourcePath.trim(),
         destinationPath: destinationPath.trim(),
+        autoSync: autoSync,
       });
-      onClose();
       return;
     }
 
@@ -174,7 +177,7 @@ export const ClientModal: React.FC<ClientModalProps> = ({
         pasta_id: folderId.trim(),
         pasta_origem: sourcePath.trim(),
         nome_remote: calculatedRemoteName,
-        status_ativo: !autoStartCargaZero, // se for rodar carga zero, ativa ao concluir
+        status_ativo: true, // Registra sempre como Ativo no banco de dados
         iniciar_carga_zero: autoStartCargaZero,
       });
 
@@ -626,18 +629,54 @@ export const ClientModal: React.FC<ClientModalProps> = ({
 
             {/* SE FOR EDIÇÃO: CAMINHO DE DESTINO */}
             {editingClient && (
-              <div>
-                <label className="block text-xs font-bold text-white mb-1.5">
-                  Destino (Remote Rclone) <span className="text-[#b886fd]">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={destinationPath}
-                  onChange={(e) => setDestinationPath(e.target.value)}
-                  disabled={isSubmitting}
-                  className="w-full px-4 py-2.5 rounded-xl bg-[#1a1824] border border-[#a855f7]/60 font-mono text-xs text-white"
-                />
-              </div>
+              <>
+                <div>
+                  <label className="block text-xs font-bold text-white mb-1.5">
+                    Destino (Remote Rclone) <span className="text-[#b886fd]">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={destinationPath}
+                    onChange={(e) => setDestinationPath(e.target.value)}
+                    disabled={isSubmitting}
+                    className="w-full px-4 py-2.5 rounded-xl bg-[#1a1824] border border-[#a855f7]/60 font-mono text-xs text-white"
+                  />
+                </div>
+
+                {/* SE FOR EDIÇÃO: STATUS ATIVO / PAUSADO */}
+                <div className="pt-1">
+                  <label className="flex items-center gap-3 p-3.5 rounded-xl bg-[#181624] border border-[#2f2b42] cursor-pointer hover:border-[#a855f7]/50 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={autoSync}
+                      onChange={(e) => setAutoSync(e.target.checked)}
+                      disabled={isSubmitting}
+                      className="sr-only"
+                    />
+                    <div
+                      className={`w-9 h-5 rounded-full transition-colors duration-200 ${
+                        autoSync ? 'bg-[#b886fd]' : 'bg-[#292636]'
+                      }`}
+                    >
+                      <div
+                        className={`w-4 h-4 rounded-full transition-transform duration-200 m-0.5 ${
+                          autoSync ? 'translate-x-4 bg-black' : 'translate-x-0 bg-white'
+                        }`}
+                      />
+                    </div>
+                    <div>
+                      <span className="text-xs font-bold text-white block">
+                        {autoSync ? 'Cliente Ativo (Auto-Sync Ligado)' : 'Cliente Inativo (Auto-Sync Pausado)'}
+                      </span>
+                      <span className="text-[11px] text-[#8e8a9c] block mt-0.5">
+                        {autoSync 
+                          ? 'O motor em segundo plano incluirá este cliente na rotina de sincronização periódica.' 
+                          : 'A sincronização automática está suspensa. O cliente só sincroniza se forçado manualmente.'}
+                      </span>
+                    </div>
+                  </label>
+                </div>
+              </>
             )}
 
             {/* Opções Avançadas (Toggle) */}

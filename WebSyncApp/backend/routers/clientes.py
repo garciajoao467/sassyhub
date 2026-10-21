@@ -96,10 +96,15 @@ def onboard_novo_cliente(dados: schemas.ClienteOnboardRequest, db: Session = Dep
     )
 
     if not sucesso_remote:
+        db.rollback()
         raise HTTPException(status_code=500, detail=f"Falha ao configurar Rclone: {msg_remote}")
 
-    db.commit()
-    db.refresh(novo_cliente)
+    try:
+        db.commit()
+        db.refresh(novo_cliente)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Erro ao salvar cliente no banco de dados: {str(e)}")
 
     return schemas.ClienteOnboardResponse(
         cliente=novo_cliente,
@@ -117,10 +122,14 @@ def criar_cliente(cliente: schemas.ClienteCreate, db: Session = Depends(get_db))
         pasta_destino=cliente.pasta_destino,
         status_ativo=cliente.status_ativo
     )
-    db.add(novo_cliente)
-    db.commit()
-    db.refresh(novo_cliente)
-    return novo_cliente
+    try:
+        db.add(novo_cliente)
+        db.commit()
+        db.refresh(novo_cliente)
+        return novo_cliente
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Erro ao salvar novo cliente no banco de dados: {str(e)}")
 
 @router.post("/sync-global")
 def sync_global_clientes(background_tasks: BackgroundTasks):
@@ -138,11 +147,16 @@ def atualizar_cliente(id: str, cliente_update: schemas.ClienteUpdate, db: Sessio
     
     update_data = cliente_update.model_dump(exclude_unset=True)
     for key, value in update_data.items():
-        setattr(cliente, key, value)
+        if value is not None:
+            setattr(cliente, key, value)
         
-    db.commit()
-    db.refresh(cliente)
-    return cliente
+    try:
+        db.commit()
+        db.refresh(cliente)
+        return cliente
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Erro ao atualizar cliente no banco de dados: {str(e)}")
 
 @router.patch("/{id}/status", response_model=schemas.ClienteResponse)
 def atualizar_status_cliente(id: str, status_update: schemas.ClienteStatusUpdate, db: Session = Depends(get_db)):
@@ -152,9 +166,13 @@ def atualizar_status_cliente(id: str, status_update: schemas.ClienteStatusUpdate
         raise HTTPException(status_code=404, detail="Cliente não encontrado")
     
     cliente.status_ativo = status_update.status_ativo
-    db.commit()
-    db.refresh(cliente)
-    return cliente
+    try:
+        db.commit()
+        db.refresh(cliente)
+        return cliente
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Erro ao atualizar status no banco de dados: {str(e)}")
 
 @router.delete("/{id}")
 def deletar_cliente(id: str, db: Session = Depends(get_db)):
@@ -163,13 +181,16 @@ def deletar_cliente(id: str, db: Session = Depends(get_db)):
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente não encontrado")
     
-    # Remove manualmente os logs para manter a integridade caso não haja CASCADE configurado.
-    db.query(Log).filter(Log.cliente_id == id).delete()
-    
-    # Exclui o cliente
-    db.delete(cliente)
-    db.commit()
-    return {"mensagem": "Cliente deletado com sucesso"}
+    try:
+        # Remove manualmente os logs para manter a integridade caso não haja CASCADE configurado.
+        db.query(Log).filter(Log.cliente_id == id).delete()
+        # Exclui o cliente
+        db.delete(cliente)
+        db.commit()
+        return {"mensagem": "Cliente deletado com sucesso"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Erro ao excluir cliente no banco de dados: {str(e)}")
 
 @router.get("/{id}/logs", response_model=List[schemas.LogResponse])
 def listar_logs_cliente(id: str, db: Session = Depends(get_db)):

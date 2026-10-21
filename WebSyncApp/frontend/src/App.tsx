@@ -20,7 +20,7 @@ import {
   MOCK_LOGS,
   syncApiService,
 } from './services/api';
-import { Plus, RefreshCw, FolderSearch } from 'lucide-react';
+import { Plus, RefreshCw, FolderSearch, AlertCircle } from 'lucide-react';
 
 export default function App() {
   const [clients, setClients] = useState<SyncClient[]>([]);
@@ -63,18 +63,42 @@ export default function App() {
   });
 
   useEffect(() => {
-    const fetchClients = async () => {
-      const data = await syncApiService.getClients();
-      setClients(data);
-    };
-    fetchClients();
+    let isMounted = true;
 
-    syncApiService.checkHealth().then((res) => {
+    const checkAndFetch = async () => {
+      const health = await syncApiService.checkHealth();
+      if (!isMounted) return;
+
       setEngineStats((prev) => ({
         ...prev,
-        fastApiConnected: res.ok,
+        fastApiConnected: health.ok,
       }));
-    });
+
+      if (health.ok) {
+        const data = await syncApiService.getClients();
+        if (isMounted && data && data.length > 0) {
+          // Atualiza preservando clientes que estão em sincronização ativa no frontend
+          setClients((prev) => {
+            if (prev.length === 0) return data;
+            return data.map((fetchedClient) => {
+              const existing = prev.find((p) => p.id === fetchedClient.id);
+              if (existing && existing.status === 'syncing') {
+                return { ...fetchedClient, status: 'syncing' };
+              }
+              return fetchedClient;
+            });
+          });
+        }
+      }
+    };
+
+    checkAndFetch();
+    const interval = setInterval(checkAndFetch, 8000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
   }, []);
 
   const addToast = (type: 'success' | 'info' | 'warning' | 'error', title: string, message: string) => {
@@ -107,7 +131,15 @@ export default function App() {
 
     if (client.autoSync === targetAutoSync) return;
 
-    await syncApiService.toggleAutoSync(clientId, targetAutoSync);
+    const salvou = await syncApiService.toggleAutoSync(clientId, targetAutoSync);
+    if (!salvou) {
+      addToast(
+        'error',
+        'Erro ao Salvar Status',
+        `Não foi possível salvar a alteração de ${client.name} no banco de dados. Verifique a conexão com o servidor backend.`
+      );
+      return;
+    }
 
     setClients((prev) =>
       prev.map((c) =>
@@ -115,7 +147,7 @@ export default function App() {
           ? {
             ...c,
             autoSync: targetAutoSync,
-            status: targetAutoSync ? 'synced' : 'paused',
+            status: targetAutoSync ? (c.status === 'paused' ? 'synced' : c.status) : 'paused',
           }
           : c
       )
@@ -242,7 +274,7 @@ export default function App() {
               ? {
                 ...c,
                 status: (success ? 'synced' : 'error') as SyncStatus,
-                autoSync: success ? c.autoSync : false,
+                autoSync: c.autoSync,
                 lastSyncAt: finishTime.toISOString(),
                 stats: {
                   ...c.stats,
@@ -297,47 +329,57 @@ export default function App() {
 
   const handleSaveClient = async (formData: Partial<SyncClient>) => {
     if (editingClient) {
-      await syncApiService.updateClient(editingClient.id, formData);
-      setClients((prev) =>
-        prev.map((c) =>
-          c.id === editingClient.id
-            ? {
+      try {
+        await syncApiService.updateClient(editingClient.id, formData);
+        setClients((prev) =>
+          prev.map((c) => {
+            if (c.id !== editingClient.id) return c;
+            const targetAutoSync = formData.autoSync !== undefined ? formData.autoSync : c.autoSync;
+            return {
               ...c,
               ...formData,
-              status: formData.autoSync ? c.status : 'paused',
-            }
-            : c
-        )
-      );
-      addToast('success', 'Cliente Atualizado', `As alterações de ${formData.name} foram salvas.`);
-    } else {
-      const result = await syncApiService.createClient(formData);
-      if (result) {
-        const newClient: SyncClient = {
-          id: result.id,
-          name: result.nome,
-          sourcePath: result.pasta_origem,
-          destinationPath: result.pasta_destino,
-          autoSync: result.status_ativo,
-          status: result.status_ativo ? 'synced' : 'paused',
-          lastSyncAt: result.criado_em,
-          nextSyncAt: null,
-          intervalMinutes: 15,
-          excludePatterns: '',
-          stats: { filesCount: 0 },
-        };
-        setClients((prev) => [newClient, ...prev]);
-
-        addToast(
-          'success',
-          'Cliente Criado',
-          `${newClient.name} foi adicionado à coluna de ${newClient.autoSync ? 'Ativos' : 'Inativos'}.`
+              autoSync: targetAutoSync,
+              status: targetAutoSync ? (c.status === 'paused' ? 'synced' : c.status) : 'paused',
+            };
+          })
         );
+        addToast('success', 'Cliente Atualizado', `As alterações de ${formData.name || editingClient.name} foram salvas.`);
+        setIsClientModalOpen(false);
+        setEditingClient(null);
+      } catch (err: any) {
+        addToast('error', 'Erro ao Atualizar', err.message || 'Falha ao salvar alterações no banco de dados.');
+      }
+    } else {
+      try {
+        const result = await syncApiService.createClient(formData);
+        if (result) {
+          const newClient: SyncClient = {
+            id: result.id,
+            name: result.nome,
+            sourcePath: result.pasta_origem,
+            destinationPath: result.pasta_destino,
+            autoSync: result.status_ativo,
+            status: result.status_ativo ? 'synced' : 'paused',
+            lastSyncAt: result.criado_em,
+            nextSyncAt: null,
+            intervalMinutes: 15,
+            excludePatterns: '',
+            stats: { filesCount: 0 },
+          };
+          setClients((prev) => [newClient, ...prev]);
+
+          addToast(
+            'success',
+            'Cliente Criado',
+            `${newClient.name} foi adicionado à coluna de ${newClient.autoSync ? 'Ativos' : 'Inativos'}.`
+          );
+          setIsClientModalOpen(false);
+          setEditingClient(null);
+        }
+      } catch (err: any) {
+        addToast('error', 'Erro ao Criar', err.message || 'Falha ao salvar novo cliente no banco de dados.');
       }
     }
-
-    setIsClientModalOpen(false);
-    setEditingClient(null);
   };
 
   const handleDeleteClient = async (id: string, name: string) => {
@@ -382,6 +424,27 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+        {/* Backend Disconnected Alert */}
+        {!engineStats.fastApiConnected && (
+          <div className="mb-6 p-4 rounded-2xl bg-amber-950/40 border border-amber-500/40 text-amber-200 flex items-center justify-between gap-3 text-xs animate-in fade-in">
+            <div className="flex items-center gap-3">
+              <AlertCircle className="w-5 h-5 text-amber-400 shrink-0" />
+              <div>
+                <span className="font-extrabold block text-amber-100">Backend FastAPI desconectado</span>
+                <span className="text-[11px] text-amber-300/80">
+                  O servidor backend não respondeu em <code>{engineStats.fastApiUrl}</code>. Inicie o servidor FastAPI para sincronizar e salvar as alterações no banco de dados.
+                </span>
+              </div>
+            </div>
+            <button
+              onClick={() => setIsApiSettingsOpen(true)}
+              className="px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 font-bold text-xs border border-amber-500/30 transition-colors shrink-0 cursor-pointer"
+            >
+              Configurar URL
+            </button>
+          </div>
+        )}
 
         {/* Header Banner */}
         <div className="mb-8 pb-7 border-b border-[#232130]">

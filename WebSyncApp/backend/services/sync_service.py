@@ -141,25 +141,30 @@ async def executar_sync(cliente_id: str, db: Session):
         )
         db.add(novo_log)
 
-        if not status_sucesso:
-            cliente.status_ativo = False
-
+        # Não desativamos status_ativo ao falhar: o cliente deve continuar na fila
+        # para tentar novamente nos próximos ciclos automáticos.
         cliente.ultimo_sync = datetime.now(timezone.utc)
-        db.commit()
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
 
         return status_sucesso, mensagem
 
     except Exception as e:
         mensagem_erro = f"Erro inesperado ao executar o subprocesso Rclone: {repr(e)}"
-        novo_log = Log(
-            cliente_id=cliente.id,
-            status_sucesso=False,
-            mensagem=mensagem_erro
-        )
-        db.add(novo_log)
-        cliente.status_ativo = False
-        cliente.ultimo_sync = datetime.now(timezone.utc)
-        db.commit()
+        try:
+            novo_log = Log(
+                cliente_id=cliente.id,
+                status_sucesso=False,
+                mensagem=mensagem_erro
+            )
+            db.add(novo_log)
+            cliente.ultimo_sync = datetime.now(timezone.utc)
+            db.commit()
+        except Exception:
+            db.rollback()
         return False, mensagem_erro
 
 
@@ -273,11 +278,11 @@ async def executar_sync_stream(cliente_id: str, db: Session):
     )
     db.add(novo_log)
 
-    if not status_sucesso:
-        cliente.status_ativo = False
-
     cliente.ultimo_sync = datetime.now(timezone.utc)
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
 
     if status_sucesso:
         yield "data: [SYNC_CONCLUIDO] Sucesso!\n\n"
