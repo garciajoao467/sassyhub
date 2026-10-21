@@ -10,7 +10,8 @@ import {
   CheckCircle2, 
   Sparkles,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  RotateCcw
 } from 'lucide-react';
 import { SyncClient } from '../types';
 import { syncApiService } from '../services/api';
@@ -208,73 +209,91 @@ export const ClientModal: React.FC<ClientModalProps> = ({
       }
 
       // 2. Inicia o Marco Zero (Carga Inicial) com streaming de logs ao vivo
-      setIsRunningCargaZero(true);
-      setStepStatus((prev) => ({ ...prev, step1Upload: 'running' }));
-      setCurrentStep(1);
-
-      syncApiService.cargaZeroStream(
-        client.id,
-        (line: string) => {
-          setCargaZeroLogs((prev) => [...prev, line]);
-
-          // Atualiza etapas com base nas mensagens do stream
-          if (line.includes('[ETAPA 1/3]')) {
-            setCurrentStep(1);
-            setStepStatus((prev) => ({ ...prev, step1Upload: 'running' }));
-          } else if (line.includes('[ETAPA 2/3]')) {
-            setCurrentStep(2);
-            setStepStatus((prev) => ({
-              ...prev,
-              step1Upload: 'success',
-              step2Download: 'running',
-            }));
-          } else if (line.includes('[ETAPA 3/3]')) {
-            setCurrentStep(3);
-            setStepStatus((prev) => ({
-              ...prev,
-              step2Download: 'success',
-              step3Bisync: 'running',
-            }));
-          }
-        },
-        (success: boolean, message?: string) => {
-          setIsRunningCargaZero(false);
-          setIsSubmitting(false);
-
-          if (success) {
-            setCargaZeroResult('success');
-            setStepStatus({
-              remoteCreated: true,
-              step1Upload: 'success',
-              step2Download: 'success',
-              step3Bisync: 'success',
-            });
-
-            // Atualiza status do cliente para ativo
-            const finalClient: SyncClient = {
-              ...newClientObj,
-              autoSync: true,
-              status: 'synced',
-              lastSyncAt: new Date().toISOString(),
-            };
-            setCreatedClientObj(finalClient);
-            if (onClientCreated) onClientCreated(finalClient);
-          } else {
-            setCargaZeroResult('error');
-            setErrorMessage(message || 'Erro durante a sincronização inicial.');
-            setStepStatus((prev) => {
-              if (currentStep === 1) return { ...prev, step1Upload: 'error' };
-              if (currentStep === 2) return { ...prev, step2Download: 'error' };
-              return { ...prev, step3Bisync: 'error' };
-            });
-          }
-        }
-      );
+      startCargaZeroExecution(client.id, newClientObj);
     } catch (err: any) {
       setIsSubmitting(false);
       setIsRunningCargaZero(false);
       setErrorMessage(err.message || 'Erro ao conectar ao servidor.');
     }
+  };
+
+  const startCargaZeroExecution = (clientId: string, clientObj: SyncClient) => {
+    setIsRunningCargaZero(true);
+    setCargaZeroResult(null);
+    setErrorMessage(null);
+    setCargaZeroLogs([]);
+    setStepStatus((prev) => ({
+      ...prev,
+      remoteCreated: true,
+      step1Upload: 'running',
+      step2Download: 'idle',
+      step3Bisync: 'idle',
+    }));
+    setCurrentStep(1);
+
+    let activeStep = 1;
+
+    syncApiService.cargaZeroStream(
+      clientId,
+      (line: string) => {
+        setCargaZeroLogs((prev) => [...prev, line]);
+
+        // Atualiza etapas com base nas mensagens do stream
+        if (line.includes('[ETAPA 1/3]')) {
+          activeStep = 1;
+          setCurrentStep(1);
+          setStepStatus((prev) => ({ ...prev, step1Upload: 'running' }));
+        } else if (line.includes('[ETAPA 2/3]')) {
+          activeStep = 2;
+          setCurrentStep(2);
+          setStepStatus((prev) => ({
+            ...prev,
+            step1Upload: 'success',
+            step2Download: 'running',
+          }));
+        } else if (line.includes('[ETAPA 3/3]')) {
+          activeStep = 3;
+          setCurrentStep(3);
+          setStepStatus((prev) => ({
+            ...prev,
+            step2Download: 'success',
+            step3Bisync: 'running',
+          }));
+        }
+      },
+      (success: boolean, message?: string) => {
+        setIsRunningCargaZero(false);
+        setIsSubmitting(false);
+
+        if (success) {
+          setCargaZeroResult('success');
+          setStepStatus({
+            remoteCreated: true,
+            step1Upload: 'success',
+            step2Download: 'success',
+            step3Bisync: 'success',
+          });
+
+          // Atualiza status do cliente para ativo
+          const finalClient: SyncClient = {
+            ...clientObj,
+            autoSync: true,
+            status: 'synced',
+            lastSyncAt: new Date().toISOString(),
+          };
+          setCreatedClientObj(finalClient);
+          if (onClientCreated) onClientCreated(finalClient);
+        } else {
+          setCargaZeroResult('error');
+          setErrorMessage(message || 'Erro durante a sincronização inicial.');
+          setStepStatus((prev) => {
+            if (activeStep === 1) return { ...prev, step1Upload: 'error' };
+            if (activeStep === 2) return { ...prev, step2Download: 'error' };
+            return { ...prev, step3Bisync: 'error' };
+          });
+        }
+      }
+    );
   };
 
   const handleFinish = () => {
@@ -470,13 +489,25 @@ export const ClientModal: React.FC<ClientModalProps> = ({
                   <span>Concluir e Ver no Kanban</span>
                 </button>
               ) : cargaZeroResult === 'error' ? (
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="px-5 py-2.5 text-xs font-bold text-white bg-[#252236] hover:bg-[#322d4a] rounded-xl transition-colors cursor-pointer"
-                >
-                  Fechar
-                </button>
+                <div className="flex items-center gap-3">
+                  {createdClientObj && (
+                    <button
+                      type="button"
+                      onClick={() => startCargaZeroExecution(createdClientObj.id, createdClientObj)}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-[#a855f7] hover:bg-[#9333ea] rounded-xl shadow-md transition-all cursor-pointer"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>Tentar Novamente</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="px-5 py-2.5 text-xs font-bold text-white bg-[#252236] hover:bg-[#322d4a] rounded-xl transition-colors cursor-pointer"
+                  >
+                    Fechar
+                  </button>
+                </div>
               ) : (
                 <div className="text-xs text-[#8e8a9c] flex items-center gap-2">
                   <Loader2 className="w-4 h-4 animate-spin text-[#b886fd]" />

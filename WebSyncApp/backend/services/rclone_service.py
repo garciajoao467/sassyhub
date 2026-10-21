@@ -118,50 +118,75 @@ def gerar_nome_remote(nome_cliente: str) -> str:
 def obter_template_drive(conf_path: str) -> Dict[str, str]:
     """
     Extrai automaticamente as credenciais base de OAuth do Google Drive
-    (client_id, client_secret, token com refresh_token e scope) a partir dos
-    remotes já configurados nos arquivos rclone.conf existentes.
-    Nenhuma configuração manual no .env é necessária.
+    (client_id, client_secret, token com refresh_token e scope) a partir de um
+    remote drive funcional já configurado no rclone.conf.
+
+    REGRA CRÍTICA: Nunca mistura credenciais de seções diferentes. No protocolo Google OAuth,
+    o refresh_token é gerado e assinado especificamente para um determinado client_id/secret.
+    Se o token for de uma seção e o client_id for de outra, o Google rejeita com:
+    'couldn't fetch token: unauthorized_client'.
     """
-    template = {
+    candidatos_arquivos = []
+    for p in [conf_path, SERVER_RCLONE_CONF, str(WORKSPACE_RCLONE_CONF)]:
+        if p and os.path.exists(p) and p not in candidatos_arquivos:
+            candidatos_arquivos.append(p)
+
+    candidatos_remotes = []
+
+    for c_path in candidatos_arquivos:
+        cp = configparser.ConfigParser(interpolation=None)
+        try:
+            cp.read(c_path, encoding='utf-8')
+            for sec in cp.sections():
+                if cp[sec].get("type") != "drive":
+                    continue
+
+                token_val = cp[sec].get("token", "").strip()
+                # É indispensável ter um refresh_token para permitir renovação automática
+                if "refresh_token" not in token_val:
+                    continue
+
+                cid = cp[sec].get("client_id", "").strip()
+                csec = cp[sec].get("client_secret", "").strip()
+                scope = cp[sec].get("scope", "drive").strip()
+
+                # Pontuação de qualidade do template:
+                # - Seção completa com client_id + client_secret + token ganha prioridade máxima (+20)
+                # - Remotes reais de produção já ativos (ex: remote_YMCA, remote_TrueBluePaving) ganham bônus (+10)
+                # - Desfavorece seções de teste ou o próprio remote genérico (+0)
+                score = 0
+                if cid and csec:
+                    score += 20
+                if sec.startswith("remote_") and sec != "remote_Cliente":
+                    score += 10
+                elif sec.startswith("remote_"):
+                    score += 5
+                else:
+                    score += 1
+
+                candidatos_remotes.append((score, sec, {
+                    "type": "drive",
+                    "client_id": cid,
+                    "client_secret": csec,
+                    "scope": scope,
+                    "token": token_val,
+                }))
+        except Exception as e:
+            print(f"Aviso ao ler template do rclone.conf ({c_path}): {e}")
+
+    if candidatos_remotes:
+        # Escolhe o melhor conjunto atômico
+        candidatos_remotes.sort(key=lambda x: x[0], reverse=True)
+        melhor = candidatos_remotes[0]
+        return melhor[2]
+
+    return {
         "type": "drive",
         "client_id": "",
         "client_secret": "",
         "scope": "drive",
         "token": "",
     }
-
-    # Busca em cascata nos arquivos rclone.conf disponíveis (conf ativo, workspace base e servidor de produção)
-    candidatos = [conf_path, str(WORKSPACE_RCLONE_CONF), SERVER_RCLONE_CONF]
-    for c_path in candidatos:
-        if not c_path or not os.path.exists(c_path):
-            continue
-
-        cp = configparser.ConfigParser(interpolation=None)
-        try:
-            cp.read(c_path, encoding='utf-8')
-            for sec in cp.sections():
-                if cp[sec].get("type") == "drive":
-                    # Extrai client_id e client_secret se disponíveis
-                    if not template["client_id"] and cp[sec].get("client_id"):
-                        template["client_id"] = cp[sec].get("client_id", "").strip()
-                    if not template["client_secret"] and cp[sec].get("client_secret"):
-                        template["client_secret"] = cp[sec].get("client_secret", "").strip()
-                    
-                    # Extrai o token OAuth com refresh_token se disponível
-                    token_val = cp[sec].get("token", "")
-                    if not template["token"] and "refresh_token" in token_val:
-                        template["token"] = token_val.strip()
-                    
-                    if cp[sec].get("scope"):
-                        template["scope"] = cp[sec].get("scope")
-
-                    # Se já tivermos tanto o token quanto o client_id, o template está completo
-                    if template["token"] and template["client_id"]:
-                        return template
-        except Exception as e:
-            print(f"Aviso ao ler template do rclone.conf ({c_path}): {e}")
-
-    return template
 
 
 def verificar_remote_existe(nome_remote: str, conf_path: str) -> bool:
@@ -176,6 +201,48 @@ def verificar_remote_existe(nome_remote: str, conf_path: str) -> bool:
         return False
 
 
+def salvar_ou_atualizar_secao_conf(conf_path: str, nome_remote: str, campos: Dict[str, str]) -> None:
+    """
+    Salva ou atualiza a seção [nome_remote] no rclone.conf de forma atômica e limpa,
+    preservando os comentários, a estrutura e evitando duplicações no arquivo.
+    """
+    linhas = []
+    if os.path.exists(conf_path):
+        with open(conf_path, "r", encoding="utf-8") as f:
+            linhas = f.readlines()
+
+    novo_bloco = [f"[{nome_remote}]\n"]
+    for k, v in campos.items():
+        novo_bloco.append(f"{k} = {v}\n")
+    novo_bloco.append("\n")
+
+    inicio_sec = -1
+    fim_sec = -1
+    for i, linha in enumerate(linhas):
+        if linha.strip() == f"[{nome_remote}]":
+            inicio_sec = i
+            fim_sec = len(linhas)
+            for j in range(i + 1, len(linhas)):
+                if linhas[j].strip().startswith("[") and linhas[j].strip().endswith("]"):
+                    fim_sec = j
+                    break
+            break
+
+    if inicio_sec != -1:
+        # Substitui a seção existente sem duplicar
+        novas_linhas = linhas[:inicio_sec] + novo_bloco + linhas[fim_sec:]
+    else:
+        # Adiciona ao final com espaçamento correto
+        if linhas and not linhas[-1].endswith("\n"):
+            linhas[-1] += "\n"
+        if linhas and linhas[-1].strip() != "":
+            linhas.append("\n")
+        novas_linhas = linhas + novo_bloco
+
+    with open(conf_path, "w", encoding="utf-8") as f:
+        f.writelines(novas_linhas)
+
+
 def criar_remote_rclone(
     nome_remote: str, 
     folder_id: str, 
@@ -183,7 +250,7 @@ def criar_remote_rclone(
     nome_cliente: Optional[str] = None
 ) -> Tuple[bool, str, str]:
     """
-    Cria uma nova seção de remote no rclone.conf vinculado ao folder_id do Google Drive.
+    Cria ou atualiza uma seção de remote no rclone.conf vinculado ao folder_id do Google Drive.
     Também adiciona a linha de registro em lista_clientes.txt se o arquivo existir.
     
     Retorna: (sucesso: bool, mensagem: str, conf_path_utilizado: str)
@@ -193,39 +260,44 @@ def criar_remote_rclone(
     # Garante que a pasta pai do rclone.conf existe
     os.makedirs(os.path.dirname(os.path.abspath(conf_path)), exist_ok=True)
 
-    # Verifica se já existe
-    if verificar_remote_existe(nome_remote, conf_path):
-        return False, f"O remote '{nome_remote}' já existe no arquivo rclone.conf ({conf_path}).", conf_path
-
-    # Obtém o template base de credenciais
+    # Obtém o template base de credenciais atômicas
     template = obter_template_drive(conf_path)
+    if not template.get("token"):
+        return False, f"Nenhum remote Google Drive com token OAuth funcional foi encontrado no rclone.conf ({conf_path}).", conf_path
 
-    bloco_novo = (
-        f"\n[{nome_remote}]\n"
-        f"type = {template['type']}\n"
-        f"client_id = {template['client_id']}\n"
-        f"client_secret = {template['client_secret']}\n"
-        f"scope = {template['scope']}\n"
-        f"token = {template['token']}\n"
-        f"team_drive = {folder_id}\n"
-        f"root_folder_id = \n"
-    )
+    # Monta os campos de configuração para o remote
+    campos = {
+        "type": template["type"],
+    }
+    if template.get("client_id"):
+        campos["client_id"] = template["client_id"]
+    if template.get("client_secret"):
+        campos["client_secret"] = template["client_secret"]
+        
+    campos["scope"] = template.get("scope", "drive")
+    campos["token"] = template["token"]
+    campos["team_drive"] = folder_id
+    campos["root_folder_id"] = ""
 
     try:
-        # Grava de forma segura no rclone.conf
-        with open(conf_path, "a", encoding="utf-8") as f:
-            f.write(bloco_novo)
+        salvar_ou_atualizar_secao_conf(conf_path, nome_remote, campos)
     except Exception as e:
         return False, f"Erro ao gravar novo remote em {conf_path}: {e}", conf_path
 
-    # Se estiver no modo de compatibilidade com lista_clientes.txt, registra lá também
+    # Se estiver no modo de compatibilidade com lista_clientes.txt, registra lá também sem duplicar
     if nome_cliente:
         try:
             lista_path = get_lista_clientes_path()
             if os.path.exists(lista_path):
-                with open(lista_path, "a", encoding="utf-8") as f_lista:
-                    f_lista.write(f"\n{nome_cliente};{nome_remote}:")
+                with open(lista_path, "r", encoding="utf-8") as f_lista:
+                    conteudo = f_lista.read()
+                linha_identificador = f"{nome_remote}:"
+                if linha_identificador not in conteudo:
+                    with open(lista_path, "a", encoding="utf-8") as f_lista:
+                        if not conteudo.endswith("\n"):
+                            f_lista.write("\n")
+                        f_lista.write(f"{nome_cliente};{nome_remote}:\n")
         except Exception as e:
             print(f"Aviso ao registrar em lista_clientes.txt: {e}")
 
-    return True, f"Remote '{nome_remote}' criado com sucesso em {conf_path}.", conf_path
+    return True, f"Remote '{nome_remote}' configurado com sucesso em {conf_path}.", conf_path

@@ -68,9 +68,26 @@ def onboard_novo_cliente(dados: schemas.ClienteOnboardRequest, db: Session = Dep
     # Verifica se já existe cliente cadastrado com esse nome
     cliente_existente = db.query(Cliente).filter(Cliente.nome == dados.nome.strip()).first()
     if cliente_existente:
-        raise HTTPException(status_code=400, detail=f"Já existe um cliente cadastrado com o nome '{dados.nome}'.")
+        if not cliente_existente.status_ativo:
+            # Cliente já existente porém inativo (ex: falhou no Marco Zero anterior).
+            # Atualiza os dados de diretório e destino para permitir retry sem erro de duplicação.
+            cliente_existente.pasta_origem = pasta_origem
+            cliente_existente.pasta_destino = pasta_destino
+            novo_cliente = cliente_existente
+        else:
+            raise HTTPException(status_code=400, detail=f"Já existe um cliente ativo cadastrado com o nome '{dados.nome}'.")
+    else:
+        # 2. Cria o registro no banco de dados
+        # Se iniciar_carga_zero for True, deixa inicialmente como False para ser ativado ao final da carga zero com sucesso
+        novo_cliente = Cliente(
+            nome=dados.nome.strip(),
+            pasta_origem=pasta_origem,
+            pasta_destino=pasta_destino,
+            status_ativo=False if dados.iniciar_carga_zero else dados.status_ativo
+        )
+        db.add(novo_cliente)
 
-    # 1. Cria o remote no rclone.conf
+    # 1. Cria ou atualiza o remote no rclone.conf
     sucesso_remote, msg_remote, conf_utilizado = criar_remote_rclone(
         nome_remote=remote_nome,
         folder_id=dados.pasta_id.strip(),
@@ -79,19 +96,8 @@ def onboard_novo_cliente(dados: schemas.ClienteOnboardRequest, db: Session = Dep
     )
 
     if not sucesso_remote:
-        # Se falhou porque já existe, mas o cliente quer reaproveitar, podemos aceitar caso seja mesmo ID
-        if "já existe" not in msg_remote.lower():
-            raise HTTPException(status_code=500, detail=f"Falha ao configurar Rclone: {msg_remote}")
+        raise HTTPException(status_code=500, detail=f"Falha ao configurar Rclone: {msg_remote}")
 
-    # 2. Cria o registro no banco de dados
-    # Se iniciar_carga_zero for True, deixa inicialmente como False para ser ativado ao final da carga zero com sucesso
-    novo_cliente = Cliente(
-        nome=dados.nome.strip(),
-        pasta_origem=pasta_origem,
-        pasta_destino=pasta_destino,
-        status_ativo=False if dados.iniciar_carga_zero else dados.status_ativo
-    )
-    db.add(novo_cliente)
     db.commit()
     db.refresh(novo_cliente)
 
