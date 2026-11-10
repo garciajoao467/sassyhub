@@ -79,6 +79,8 @@ async def executar_sync(cliente_id: str, db: Session):
         "--drive-chunk-size", "128M",
         "--transfers", "8",
         "--checkers", "16",
+        "--drive-skip-dangling-shortcuts",
+        "--ignore-case-sync",
         "--log-level", "NOTICE"
     ]
 
@@ -193,6 +195,8 @@ async def executar_sync_stream(cliente_id: str, db: Session):
         "--drive-chunk-size", "128M",
         "--transfers", "8",
         "--checkers", "16",
+        "--drive-skip-dangling-shortcuts",
+        "--ignore-case-sync",
         "--log-level", "NOTICE",
         "--stats=1s"
     ]
@@ -317,6 +321,7 @@ async def executar_carga_zero_stream(cliente_id: str, db: Session):
         "--transfers", "8",
         "--drive-chunk-size", "128M",
         "--progress",
+        "--drive-skip-dangling-shortcuts",
         "--log-level", "NOTICE"
     ]
     if conf_path and os.path.exists(conf_path):

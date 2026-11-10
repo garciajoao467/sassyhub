@@ -278,6 +278,7 @@ def criar_remote_rclone(
     campos["token"] = template["token"]
     campos["team_drive"] = folder_id
     campos["root_folder_id"] = ""
+    campos["skip_dangling_shortcuts"] = "true"
 
     try:
         salvar_ou_atualizar_secao_conf(conf_path, nome_remote, campos)
